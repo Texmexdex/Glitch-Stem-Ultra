@@ -11,9 +11,11 @@ AI-powered audio stem separation and MIDI extraction with GPU acceleration.
 - **Stem Separation** - Extract vocals, drums, bass, and instruments using state-of-the-art AI models
 - **MIDI Extraction** - Convert melodic stems to MIDI (piano, bass, synths) and transcribe drum patterns
 - **GPU Accelerated** - Optimized for NVIDIA GPUs with CUDA support
-- **God Mode** - Preset for high-VRAM cards (24GB+) with maximum quality settings
+- **Auto Hardware Detection** - Automatically detects your GPU and recommends optimal settings
+- **Hardware Presets** - 6 presets from CPU-only to God Mode for any PC configuration
 - **Ensemble Workflows** - Chain multiple models for best results
 - **Custom Ensembles** - Build your own multi-model pipelines
+- **Interactive Tooltips** - Hover over settings to see hardware impact and tips
 
 ## Models
 
@@ -24,12 +26,27 @@ AI-powered audio stem separation and MIDI extraction with GPU acceleration.
 - **Multi-stem**: HTDemucs-ft (4-stem), HTDemucs-6s (6-stem), BS-Roformer-SW (6-stem)
 - **Utility**: De-reverb, Denoise, Bleed suppression, Vocal/Instrumental restoration
 
+## Hardware Presets
+
+The app auto-detects your GPU on startup and recommends the best preset:
+
+| Preset | VRAM | GPU Examples | Settings |
+|--------|------|--------------|----------|
+| CPU Only | None | No NVIDIA GPU | Slowest, works anywhere |
+| Laptop/Low | 2-4GB | GTX 1050, 1650, MX series | Safe, avoids crashes |
+| Mid-Range | 6-8GB | GTX 1060-1080, RTX 2060-3060 | Balanced speed/quality |
+| High-End | 10-12GB | RTX 3060 Ti/3070/3080, 4070 | Fast, high quality |
+| Enthusiast | 16-24GB | RTX 3090, 4080/4090 | Very high quality |
+| 🔥 God Mode | 24GB+ | RTX 3090 Ti, 4090, A6000 | Maximum quality |
+
+Hover over parameter labels (Segment Size ⓘ, Overlap ⓘ, Batch Size ⓘ) to see hardware impact details.
+
 ## Requirements
 
 - Windows 10/11
 - Python 3.11+
-- NVIDIA GPU with CUDA support
-- CUDA 12.4 compatible drivers
+- NVIDIA GPU with CUDA support (optional - CPU mode available)
+- CUDA 12.4 compatible drivers (for GPU acceleration)
 
 ## Installation
 
@@ -67,8 +84,8 @@ python GlitchStemUltra.py
 
 1. Click **SELECT AUDIO FILE** to choose your track
 2. Select an **OUTPUT FOLDER** (optional - defaults to `./Stems_Output/`)
-3. Choose a model or ensemble workflow from the dropdown
-4. Enable **GOD MODE** for maximum quality (requires 24GB+ VRAM)
+3. Choose a **Hardware Preset** (auto-detected on startup, or select manually)
+4. Choose a model or ensemble workflow from the dropdown
 5. Click **INITIALIZE SEPARATION**
 
 ### MIDI Extraction

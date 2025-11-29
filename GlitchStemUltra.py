@@ -9,6 +9,76 @@ import sys
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("dark-blue")
 
+# GPU Detection
+def detect_gpu_info():
+    """Detect NVIDIA GPU and VRAM size"""
+    gpu_info = {"name": None, "vram_gb": 0, "cuda_available": False}
+    
+    # Try PyTorch first (most reliable if available)
+    try:
+        import torch
+        if torch.cuda.is_available():
+            gpu_info["cuda_available"] = True
+            gpu_info["name"] = torch.cuda.get_device_name(0)
+            gpu_info["vram_gb"] = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+            return gpu_info
+    except:
+        pass
+    
+    # Fallback: nvidia-smi
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW
+        )
+        if result.returncode == 0:
+            parts = result.stdout.strip().split(", ")
+            if len(parts) >= 2:
+                gpu_info["name"] = parts[0]
+                gpu_info["vram_gb"] = float(parts[1]) / 1024  # MB to GB
+                gpu_info["cuda_available"] = True
+    except:
+        pass
+    
+    return gpu_info
+
+def get_recommended_preset(vram_gb):
+    """Get recommended preset based on VRAM"""
+    if vram_gb <= 0:
+        return "CPU Only (No GPU)"
+    elif vram_gb < 5:
+        return "Laptop / Low VRAM (2-4GB)"
+    elif vram_gb < 9:
+        return "Mid-Range (6-8GB VRAM)"
+    elif vram_gb < 14:
+        return "High-End (10-12GB VRAM)"
+    elif vram_gb < 22:
+        return "Enthusiast (16-24GB VRAM)"
+    else:
+        return "🔥 GOD MODE (24GB+ VRAM)"
+
+# Slider parameter info (for tooltips)
+PARAM_INFO = {
+    "seg_size": {
+        "title": "Segment Size (Context Window)",
+        "desc": "How much audio context the model processes at once. Higher = better quality but more VRAM.",
+        "impact": "🎮 VRAM: HEAVY | 🖥️ CPU: Light | 💾 RAM: Moderate",
+        "tip": "If you get CUDA out of memory errors, lower this first."
+    },
+    "overlap": {
+        "title": "Overlap (Smoothness)",
+        "desc": "How much segments overlap when processing. Higher = smoother transitions, fewer artifacts.",
+        "impact": "🎮 VRAM: Moderate | 🖥️ CPU: HEAVY | 💾 RAM: Light",
+        "tip": "Higher values increase processing time significantly."
+    },
+    "batch_size": {
+        "title": "Batch Size (Parallel Processing)",
+        "desc": "How many segments to process simultaneously. Higher = faster but needs more VRAM.",
+        "impact": "🎮 VRAM: HEAVY | 🖥️ CPU: Moderate | 💾 RAM: HEAVY",
+        "tip": "Keep at 1 for low VRAM GPUs. Increase for faster processing on high-end cards."
+    }
+}
+
 # Drum transcription using librosa (load first as it's used by both)
 DRUMS_AVAILABLE = False
 try:
@@ -201,6 +271,64 @@ MODEL_DATABASE = {
     },
 }
 
+# Hardware presets for different PC configurations
+HARDWARE_PRESETS = {
+    "CPU Only (No GPU)": {
+        "desc": "For systems without NVIDIA GPU or CUDA support",
+        "requirements": "Any CPU, 8GB+ RAM, No GPU required",
+        "seg_size": 128,
+        "overlap": 4,
+        "batch_size": 1,
+        "notes": "Slowest but works on any system. Expect 5-10x longer processing times.",
+        "recommended_models": ["HTDemucs-ft", "Kuielab-Drums-A"]
+    },
+    "Laptop / Low VRAM (2-4GB)": {
+        "desc": "Entry-level NVIDIA GPUs (GTX 1050, 1650, MX series)",
+        "requirements": "NVIDIA GPU with 2-4GB VRAM, CUDA support",
+        "seg_size": 128,
+        "overlap": 4,
+        "batch_size": 1,
+        "notes": "Safe settings to avoid VRAM crashes. Avoid large models.",
+        "recommended_models": ["HTDemucs-ft", "Kuielab-Drums-A", "Kuielab-Drums-B"]
+    },
+    "Mid-Range (6-8GB VRAM)": {
+        "desc": "GTX 1060/1070/1080, RTX 2060/2070, RTX 3060",
+        "requirements": "NVIDIA GPU with 6-8GB VRAM",
+        "seg_size": 256,
+        "overlap": 8,
+        "batch_size": 2,
+        "notes": "Good balance of speed and quality. Most models work well.",
+        "recommended_models": ["MelBand-Kim-Vocals", "MelBand-Inst-V2", "HTDemucs-ft"]
+    },
+    "High-End (10-12GB VRAM)": {
+        "desc": "RTX 2080, RTX 3060 Ti/3070/3080, RTX 4070",
+        "requirements": "NVIDIA GPU with 10-12GB VRAM",
+        "seg_size": 512,
+        "overlap": 10,
+        "batch_size": 4,
+        "notes": "Fast processing with high quality. All models supported.",
+        "recommended_models": ["MelBand-BigBeta4", "BS-Roformer-SW-6stem", "DrumSep-6way"]
+    },
+    "Enthusiast (16-24GB VRAM)": {
+        "desc": "RTX 3090/3090 Ti, RTX 4080/4090, A5000/A6000",
+        "requirements": "NVIDIA GPU with 16-24GB VRAM",
+        "seg_size": 1024,
+        "overlap": 12,
+        "batch_size": 6,
+        "notes": "High quality settings. Can run multiple models in ensemble.",
+        "recommended_models": ["All models supported", "Ensemble workflows recommended"]
+    },
+    "🔥 GOD MODE (24GB+ VRAM)": {
+        "desc": "Maximum quality - RTX 3090 Ti, RTX 4090, Pro cards",
+        "requirements": "NVIDIA GPU with 24GB+ VRAM (3090 Ti, 4090, A6000)",
+        "seg_size": 2048,
+        "overlap": 12,
+        "batch_size": 8,
+        "notes": "Maximum segment size for best quality. No compromises.",
+        "recommended_models": ["All models at max settings", "Complex ensembles"]
+    },
+}
+
 # Ensemble presets - run multiple models and average results
 ENSEMBLE_PRESETS = {
     "ENSEMBLE: 🥁 Drum Isolation + Split": {
@@ -328,38 +456,72 @@ class GlitchStemUltraApp(ctk.CTk):
         self.model_desc.grid(row=2, column=0, columnspan=2, pady=(0, 10))
         self.on_model_change(self.model_var.get())  # Set initial description
 
-        # --- Parameters ---
-        ctk.CTkLabel(self.settings_frame, text="INFERENCE PARAMETERS", font=("Roboto", 14, "bold")).grid(row=3, column=0, columnspan=2, pady=(10, 5))
-
-        # Segment Size
-        ctk.CTkLabel(self.settings_frame, text="Segment Size (Context)").grid(row=4, column=0, sticky="e", padx=10)
-        self.seg_size = ctk.CTkSlider(self.settings_frame, from_=256, to=4096, number_of_steps=100, command=self.update_seg_label)
-        self.seg_size.set(256)
-        self.seg_size.grid(row=4, column=1, sticky="w", padx=10)
-        self.seg_size_label = ctk.CTkLabel(self.settings_frame, text="256", font=("Consolas", 12), width=50)
-        self.seg_size_label.grid(row=4, column=1, sticky="e", padx=(0, 30))
+        # --- Hardware Presets ---
+        ctk.CTkLabel(self.settings_frame, text="HARDWARE PRESET", font=("Roboto", 14, "bold")).grid(row=3, column=0, columnspan=2, pady=(10, 5))
         
-        # Overlap
-        ctk.CTkLabel(self.settings_frame, text="Overlap (Smoothness)").grid(row=5, column=0, sticky="e", padx=10)
+        # Hardware preset dropdown
+        self.hardware_presets_list = list(HARDWARE_PRESETS.keys())
+        self.hardware_var = ctk.StringVar(value="🔥 GOD MODE (24GB+ VRAM)")
+        self.hardware_combo = ctk.CTkComboBox(self.settings_frame, variable=self.hardware_var,
+                                               values=self.hardware_presets_list, width=350,
+                                               command=self.on_hardware_preset_change)
+        self.hardware_combo.grid(row=4, column=0, columnspan=2, pady=5)
+        
+        # Hardware preset description
+        self.hardware_desc = ctk.CTkLabel(self.settings_frame, text="", font=("Roboto", 10), text_color="#888", wraplength=400)
+        self.hardware_desc.grid(row=5, column=0, columnspan=2, pady=(0, 5))
+        
+        # Hardware requirements label
+        self.hardware_req = ctk.CTkLabel(self.settings_frame, text="", font=("Roboto", 10, "bold"), text_color="#4CAF50")
+        self.hardware_req.grid(row=6, column=0, columnspan=2, pady=(0, 10))
+
+        # --- Parameters ---
+        ctk.CTkLabel(self.settings_frame, text="INFERENCE PARAMETERS", font=("Roboto", 14, "bold")).grid(row=7, column=0, columnspan=2, pady=(10, 5))
+        ctk.CTkLabel(self.settings_frame, text="(Hover over labels for details)", font=("Roboto", 9), text_color="#666").grid(row=7, column=0, columnspan=2, pady=(25, 0))
+
+        # Segment Size (with tooltip)
+        self.seg_label = ctk.CTkLabel(self.settings_frame, text="Segment Size ⓘ", cursor="question_arrow")
+        self.seg_label.grid(row=8, column=0, sticky="e", padx=10)
+        self.seg_label.bind("<Enter>", lambda e: self.show_param_tooltip(e, "seg_size"))
+        self.seg_label.bind("<Leave>", self.hide_tooltip)
+        
+        self.seg_size = ctk.CTkSlider(self.settings_frame, from_=64, to=4096, number_of_steps=100, command=self.update_seg_label)
+        self.seg_size.set(256)
+        self.seg_size.grid(row=8, column=1, sticky="w", padx=10)
+        self.seg_size_label = ctk.CTkLabel(self.settings_frame, text="256", font=("Consolas", 12), width=50)
+        self.seg_size_label.grid(row=8, column=1, sticky="e", padx=(0, 30))
+        
+        # Overlap (with tooltip)
+        self.overlap_title = ctk.CTkLabel(self.settings_frame, text="Overlap ⓘ", cursor="question_arrow")
+        self.overlap_title.grid(row=9, column=0, sticky="e", padx=10)
+        self.overlap_title.bind("<Enter>", lambda e: self.show_param_tooltip(e, "overlap"))
+        self.overlap_title.bind("<Leave>", self.hide_tooltip)
+        
         self.overlap = ctk.CTkSlider(self.settings_frame, from_=2, to=50, number_of_steps=48, command=self.update_overlap_label)
         self.overlap.set(8)
-        self.overlap.grid(row=5, column=1, sticky="w", padx=10)
+        self.overlap.grid(row=9, column=1, sticky="w", padx=10)
         self.overlap_label = ctk.CTkLabel(self.settings_frame, text="8", font=("Consolas", 12), width=50)
-        self.overlap_label.grid(row=5, column=1, sticky="e", padx=(0, 30))
+        self.overlap_label.grid(row=9, column=1, sticky="e", padx=(0, 30))
 
-        # Batch Size
-        ctk.CTkLabel(self.settings_frame, text="Batch Size (VRAM)").grid(row=6, column=0, sticky="e", padx=10)
+        # Batch Size (with tooltip)
+        self.batch_title = ctk.CTkLabel(self.settings_frame, text="Batch Size ⓘ", cursor="question_arrow")
+        self.batch_title.grid(row=10, column=0, sticky="e", padx=10)
+        self.batch_title.bind("<Enter>", lambda e: self.show_param_tooltip(e, "batch_size"))
+        self.batch_title.bind("<Leave>", self.hide_tooltip)
+        
         self.batch_size = ctk.CTkSlider(self.settings_frame, from_=1, to=16, number_of_steps=15, command=self.update_batch_label)
         self.batch_size.set(1)
-        self.batch_size.grid(row=6, column=1, sticky="w", padx=10)
+        self.batch_size.grid(row=10, column=1, sticky="w", padx=10)
         self.batch_size_label = ctk.CTkLabel(self.settings_frame, text="1", font=("Consolas", 12), width=50)
-        self.batch_size_label.grid(row=6, column=1, sticky="e", padx=(0, 30))
+        self.batch_size_label.grid(row=10, column=1, sticky="e", padx=(0, 30))
 
-        # --- Presets ---
-        self.chk_god_mode = ctk.CTkCheckBox(self.settings_frame, text="ACTIVATE GOD MODE (3090 Ti Preset)", 
-                                            command=self.toggle_god_mode, onvalue=True, offvalue=False,
-                                            font=("Roboto", 12, "bold"), text_color="#00e5ff")
-        self.chk_god_mode.grid(row=7, column=0, columnspan=2, pady=(15, 10))
+        # Tooltip window (hidden by default)
+        self.tooltip = None
+
+        # Manual override note
+        self.manual_note = ctk.CTkLabel(self.settings_frame, text="(Adjust sliders manually to fine-tune)", 
+                                        font=("Roboto", 9), text_color="#666")
+        self.manual_note.grid(row=11, column=0, columnspan=2, pady=(5, 10))
         
         # 4. Console Output
         self.console = ctk.CTkTextbox(self, height=180, font=("Consolas", 10), text_color="#bbb")
@@ -426,9 +588,8 @@ class GlitchStemUltraApp(ctk.CTk):
         self.footer = ctk.CTkLabel(self, text="TeXmExDeX Type Tunes", font=("Roboto", 11), text_color="#666")
         self.footer.grid(row=8, column=0, pady=(10, 15), sticky="s")
 
-        # Initialize God Mode
-        self.chk_god_mode.select()
-        self.toggle_god_mode()
+        # Auto-detect GPU and set recommended preset
+        self.auto_detect_hardware()
 
     def build_model_list(self):
         """Build display list with categories - BEST/NEWEST FIRST"""
@@ -545,23 +706,95 @@ class GlitchStemUltraApp(ctk.CTk):
     def update_batch_label(self, value):
         self.batch_size_label.configure(text=str(int(value)))
 
-    def toggle_god_mode(self):
-        if self.chk_god_mode.get():
-            self.seg_size.set(2048)
-            self.overlap.set(12)
-            self.batch_size.set(8)
-            self.update_seg_label(2048)
-            self.update_overlap_label(12)
-            self.update_batch_label(8)
-            self.log(">> GOD MODE ACTIVE: Max settings for 3090 Ti 24GB")
+    def show_param_tooltip(self, event, param_key):
+        """Show tooltip with parameter info on hover"""
+        if self.tooltip:
+            self.tooltip.destroy()
+        
+        info = PARAM_INFO.get(param_key, {})
+        if not info:
+            return
+        
+        # Create tooltip window
+        self.tooltip = ctk.CTkToplevel(self)
+        self.tooltip.wm_overrideredirect(True)  # No window decorations
+        self.tooltip.wm_attributes("-topmost", True)
+        
+        # Position near the mouse
+        x = event.x_root + 15
+        y = event.y_root + 10
+        self.tooltip.geometry(f"+{x}+{y}")
+        
+        # Tooltip content frame
+        frame = ctk.CTkFrame(self.tooltip, fg_color="#2b2b2b", corner_radius=8, border_width=1, border_color="#00e5ff")
+        frame.pack(padx=2, pady=2)
+        
+        # Title
+        ctk.CTkLabel(frame, text=info["title"], font=("Roboto", 12, "bold"), text_color="#00e5ff").pack(anchor="w", padx=10, pady=(8, 2))
+        
+        # Description
+        ctk.CTkLabel(frame, text=info["desc"], font=("Roboto", 10), text_color="#ccc", wraplength=280).pack(anchor="w", padx=10, pady=2)
+        
+        # Hardware impact
+        ctk.CTkLabel(frame, text=info["impact"], font=("Roboto", 10, "bold"), text_color="#ff9500").pack(anchor="w", padx=10, pady=2)
+        
+        # Tip
+        ctk.CTkLabel(frame, text=f"💡 {info['tip']}", font=("Roboto", 9), text_color="#888", wraplength=280).pack(anchor="w", padx=10, pady=(2, 8))
+
+    def hide_tooltip(self, event=None):
+        """Hide the tooltip"""
+        if self.tooltip:
+            self.tooltip.destroy()
+            self.tooltip = None
+
+    def on_hardware_preset_change(self, selection):
+        """Apply hardware preset settings"""
+        if selection not in HARDWARE_PRESETS:
+            return
+        
+        preset = HARDWARE_PRESETS[selection]
+        
+        # Update sliders
+        self.seg_size.set(preset["seg_size"])
+        self.overlap.set(preset["overlap"])
+        self.batch_size.set(preset["batch_size"])
+        
+        # Update labels
+        self.update_seg_label(preset["seg_size"])
+        self.update_overlap_label(preset["overlap"])
+        self.update_batch_label(preset["batch_size"])
+        
+        # Update description labels
+        self.hardware_desc.configure(text=f"{preset['desc']}\n{preset['notes']}")
+        self.hardware_req.configure(text=f"Requirements: {preset['requirements']}")
+        
+        # Log the change
+        self.log(f">> Hardware preset: {selection}")
+        self.log(f"   Segment: {preset['seg_size']}, Overlap: {preset['overlap']}, Batch: {preset['batch_size']}")
+
+    def auto_detect_hardware(self):
+        """Auto-detect GPU and set recommended preset"""
+        self.log(">> Detecting hardware...")
+        
+        gpu_info = detect_gpu_info()
+        
+        if gpu_info["cuda_available"] and gpu_info["name"]:
+            vram = gpu_info["vram_gb"]
+            self.log(f">> GPU Detected: {gpu_info['name']}")
+            self.log(f">> VRAM: {vram:.1f} GB")
+            
+            # Get recommended preset
+            recommended = get_recommended_preset(vram)
+            self.log(f">> Recommended preset: {recommended}")
+            
+            # Set the preset
+            self.hardware_var.set(recommended)
+            self.on_hardware_preset_change(recommended)
         else:
-            self.seg_size.set(256)
-            self.overlap.set(8)
-            self.batch_size.set(1)
-            self.update_seg_label(256)
-            self.update_overlap_label(8)
-            self.update_batch_label(1)
-            self.log(">> Standard settings loaded.")
+            self.log(">> No NVIDIA GPU detected - using CPU mode")
+            self.log(">> Tip: Install CUDA drivers for GPU acceleration")
+            self.hardware_var.set("CPU Only (No GPU)")
+            self.on_hardware_preset_change("CPU Only (No GPU)")
 
     def log(self, message):
         self.console.insert("end", message + "\n")
