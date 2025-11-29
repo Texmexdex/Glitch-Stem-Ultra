@@ -1,0 +1,24 @@
+# Core audio processing
+librosa
+scipy
+numpy
+soundfile
+
+# GUI
+customtkinter
+
+# Audio separation (GPU accelerated)
+audio-separator[gpu]
+onnxruntime-gpu
+
+# PyTorch with CUDA (for GPU inference)
+--extra-index-url https://download.pytorch.org/whl/cu124
+torch
+torchvision
+
+# MIDI extraction - Piano/Melodic
+piano_transcription_inference
+torchlibrosa
+
+# MIDI extraction - Drums
+mido
